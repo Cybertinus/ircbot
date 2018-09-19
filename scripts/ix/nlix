@@ -1,0 +1,70 @@
+#!/usr/bin/env python
+
+import sys, urllib, re, csv, sqlite3
+
+
+ix = "nlix"
+url = "http://www.nl-ix.net/memberstsv.txt" # FIXME
+
+query = """ INSERT INTO ix (name, asno, org, contact,
+			    ipv4, ipv6, speed, location)
+			VALUES (?,?,?,?,?,?,?,?) """
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+
+    db = sqlite3.connect(datadir + "/ix.sqlite")
+    con = db.cursor()
+
+    try:
+	response = urllib.urlopen(url)
+    except IOError, e:
+	if hasattr(e, 'reason'):
+	    print 'failed to fetch %s: ' % url, e.reason
+	elif hasattr(e, 'code'):
+	    print 'failed to fetch %s: ' % url, e.code
+	sys.exit(1)
+
+    if not response:
+	print "failed to fetch %s" % url
+	sys.exit(1)
+
+
+    con.execute("DELETE FROM ix where name = ?", (ix,))
+    members = csv.DictReader(response, dialect='excel-tab')
+
+    for m in members:
+
+        # strip broken encoding
+	m = {key: unicode(value, 'utf-8', errors='replace') for key, value in m.iteritems()}
+
+	if "Location" not in m:
+	    print 'invalid input detected: '
+	    for m in members:
+		print m;
+	    sys.exit(1)
+
+	result = con.execute(query,
+		  (ix, m["AS number"], m["Organisation"], m["Peering Contact"],
+		   m["IPv4"], m["IPv6"], m["Connection"], m["Location"]))
+
+	if not result:
+	    print 'failed to execute query'
+	    sys.exit(1)
+
+
+    db.commit()
+    db.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

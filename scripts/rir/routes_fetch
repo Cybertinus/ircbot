@@ -1,0 +1,20 @@
+#!/bin/sh
+
+basedir=$(dirname $0)
+datadir=$1
+
+month=`date +%Y.%m`;
+day=`date +%Y%m%d -d yesterday`;
+url='http://data.ris.ripe.net/rrc00/'
+file="${datadir}/rir/routes/bview.gz"
+
+wget -q -O ${file}.$$ ${url}/$month/bview.$day.2359.gz;
+
+if [ -s ${file}.$$ ]; then
+    mv ${file}.$$ ${file}
+else
+    rm ${file}.$$
+fi
+
+zcat ${file} | ${basedir}/bgpdump -m - | ${basedir}/routes_db ${datadir}
+

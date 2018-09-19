@@ -1,0 +1,10 @@
+BEGIN TRANSACTION;
+CREATE TABLE ports (
+  id integer PRIMARY KEY,
+  port integer NOT NULL,
+  proto varchar(10) NOT NULL,
+  keyword varchar(255),
+  description varchar(255)
+);
+CREATE INDEX port_index ON ports(port);
+COMMIT;

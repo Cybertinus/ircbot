@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+import sys, urllib, sqlite3, csv
+
+url = "http://www.iana.nl/assignments/service-names-port-numbers/service-names-port-numbers.csv"
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+
+    db = sqlite3.connect(datadir + "/port.sqlite")
+    db.text_factory = lambda s:s.decode('utf-8')
+    c = db.cursor()
+
+    response = urllib.urlopen(url).read()
+
+    if not response:
+	print "failed to fetch %s" % url
+	sys.exit(1)
+
+    c.execute(""" DELETE FROM ports """)
+
+    response = response.splitlines()
+    reader = csv.reader(response[1:], delimiter=',', quotechar='"')
+
+    for row in reader:
+	[ keyword, port, proto, descr ] = row[0:4]
+
+	if port == '' or keyword == '':
+	    continue
+
+	if descr:
+	    descr = descr.strip()
+
+	try:
+	    c.execute(""" INSERT INTO ports (port, proto, keyword, description)
+			  VALUES (?,?,?,?) """, (port, proto, keyword, descr))
+	except:
+	    print "database query for %s/%s - %s failed" \
+		  % (port, proto, keyword)
+	    sys.exit(1)
+
+    db.commit()
+    db.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

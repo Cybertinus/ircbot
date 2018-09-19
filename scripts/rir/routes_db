@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+
+import os, sys, urllib, re, gzip, StringIO, sqlite3
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+    routes = {}
+    db = sqlite3.connect(datadir + "/routes.sqlite")
+    db.text_factory = lambda s:s.decode('utf-8')
+    con = db.cursor()
+    con.execute(""" DELETE FROM routes """)
+    query = """ INSERT INTO routes (asno, type, net, mask, start, end)
+		 VALUES(?, ?, ?, ?, ?, ?) """
+
+    for line in sys.stdin:
+	try:
+	    [ net, aspath ] = (line.split('|'))[5:7]
+	except:
+	    continue
+
+	origin = (aspath.split(' '))[-1]
+
+	if not net in routes:
+	    routes[net] = origin
+
+    for net in routes:
+	try:
+	    [ addr, mask ] = net.split('/')
+	    type = None
+	    start = 0
+	    end = 0
+
+	    # reject default routes
+	    if addr == "0.0.0.0" or mask == "0":
+		continue
+
+	    if addr.find(":") == -1:
+		type = 'ipv4'
+		for octet in addr.split('.'):
+		    start <<= 8
+		    start |= int(octet)
+		end = start + (2 ** (32 - int(mask))) - 1
+	    else:
+		type = 'ipv6'
+
+	    con.execute(query, (routes[net], type, addr, mask, start, end))
+
+	except:
+	    print "insert failed for route: %s asn: %s" % (net, routes[net])
+	    sys.exit(1)
+
+    db.commit()
+    con.execute("analyze")
+    db.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

@@ -1,0 +1,122 @@
+#!/usr/bin/env python
+
+import os, sys, urllib, re, gzip, StringIO, sqlite3
+
+rirs = [ 'afrinic', 'apnic', 'arin', 'lacnic', 'ripencc' ]
+stats_url = 'ftp://ftp.ripe.net/pub/stats'
+
+aquery = """ INSERT INTO asno (asno, rir, cc, policy, date)
+				VALUES(?,?,?,?,?) """
+squery = """ INSERT INTO asno (asno, asname, rir, policy, description)
+				VALUES(?,?,?,?,?) """
+rquery = """ INSERT INTO rirs (rir, type, cc, net, mask, start, end,
+				policy, date) VALUES(?,?,?,?,?,?,?,?,?) """
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+    adb = sqlite3.connect(datadir + "/asno.sqlite")
+    rdb = sqlite3.connect(datadir + "/routes.sqlite")
+    acon = adb.cursor()
+    acon.execute(""" DELETE FROM asno """)
+    rcon = rdb.cursor()
+    rcon.execute(""" DELETE FROM rirs """)
+
+    for rir in rirs:
+	filename = '%s/rir/stats/%s.txt' % (datadir, rir)
+	url = '%s/%s/delegated-%s-extended-latest' % (stats_url, rir, rir)
+
+	response = urllib.urlopen(url).read()
+	if not response:
+	    print "failed to fetch %s for %s" % (url, rir)
+	    sys.exit(1)
+
+	try:
+	    f = open('%s.%s' % (filename, os.getpid()), 'w')
+	    f.write(response)
+	    f.close
+	except:
+	    print "failed to write %s" % (filename)
+	    sys.exit(1)
+
+	os.rename("%s.%s" % (filename, os.getpid()), filename)
+
+	parse_stats(acon, rcon, response)
+
+    acon.execute(squery, (0, "IANA-RSVD-0", "IANA", "reserved",
+		"Used to identify non-routed networks"))
+    acon.execute(squery, (23456, "AS_TRANS", "IANA", "reserved",
+		"Used to identify ASN32 networks"))
+    for num in range(64496, 64512) + range(65536, 65552): 
+	acon.execute(squery, (num, None, "IANA", "reserved",
+		"Used in documentation and sample code"))
+    for num in range(64512, 65535): 
+	acon.execute(squery, (num, None, "IANA", "reserved",
+		"Designated for private use"))
+    for num in range(65552, 131072) + [ 65535, 4294967295 ]: 
+	acon.execute(squery, (num, None, "IANA", "reserved", None))
+
+    adb.commit()
+    adb.close()
+    rdb.commit()
+    rdb.close()
+
+
+def parse_stats(acon, rcon, txt):
+    for line in txt.split():
+	try:
+	    fields = line.split('|')
+	    [ rir, cc, type, value, count, date, policy ] = fields[:7]
+	except:
+	    continue
+
+	if type == "asn" and value.isdigit():
+	    try:
+	        asmin = int(value)
+		asmax = int(value) + int (count)
+
+		for asno in range(asmin, asmax):
+		    acon.execute(aquery, (asno, rir.upper(), cc, policy,
+			   "%s-%s-%s" % (date[0:4], date[4:6], date[6:8])))
+	    except:
+		print "insert failed for asn: %s rir: %s" % (value, rir.upper())
+		sys.exit(1)
+
+	if type == "ipv4" or type == "ipv6":
+	    start = 0
+	    end = 0
+	    mask = 0
+
+	    if type == "ipv4":
+		while (int(count)>>mask) > 1:
+		    mask += 1
+		mask = 32 - mask
+
+		for octet in value.split('.'):
+                    start <<= 8
+                    start |= int(octet)
+		end = start + int(count) - 1
+
+	    if type == "ipv6":
+		mask = count
+
+	    try:
+		rcon.execute(rquery, (rir.upper(), type, cc, value, mask,
+			start, end, policy, 
+			"%s-%s-%s" % (date[0:4], date[4:6], date[6:8])))
+	    except:
+		print "insert failed for range: %s rir: %s" \
+			 % (value, rir.upper())
+		sys.exit(1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

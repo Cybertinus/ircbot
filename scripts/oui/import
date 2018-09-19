@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+import sys, urllib, re, sqlite3
+
+url = "http://standards-oui.ieee.org/oui.txt"
+regexp = "([0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2})\s+\(hex\)(.+)$"
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+
+    db = sqlite3.connect(datadir + "/oui.sqlite")
+    db.text_factory = lambda s:s.decode('utf-8')
+    c = db.cursor()
+
+    response = urllib.urlopen(url).read()
+
+    if not response:
+	print "failed to fetch %s" % url
+	sys.exit(1)
+
+    c.execute(""" DELETE FROM oui """)
+    pattern = re.compile(regexp, re.M)
+    ouis = []
+
+    for m in pattern.finditer(response):
+	oui = m.group(1)
+	vendor = m.group(2).strip()
+
+	try:
+	    if ouis.index(oui):
+		continue
+	except:
+	    ouis.append(oui)
+
+	try:
+	    c.execute(""" INSERT INTO oui (oui, vendor) VALUES (?,?) """,
+		       (oui, vendor))
+	except:
+	    print "database query for %s - %s failed" % (oui, vendor)
+	    sys.exit(1)
+
+    db.commit()
+    db.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

@@ -1,0 +1,11 @@
+CREATE TABLE asno (
+  id integer PRIMARY KEY,
+  asno int(11) NOT NULL,
+  asname varchar(255) default NULL,
+  description varchar(255) default NULL,
+  rir varchar(255) NOT NULL default 'RIPENCC',
+  cc varchar(50) default NULL,
+  date varchar(50) default NULL,
+  policy varchar(50) NOT NULL default 'allocated'
+);
+CREATE INDEX asno_index ON asno(asno);

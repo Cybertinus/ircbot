@@ -1,0 +1,13 @@
+CREATE TABLE ix (
+  id integer PRIMARY KEY,
+  name varchar(255) NOT NULL default '',
+  asno int(11) default NULL,
+  org varchar(255) NOT NULL default '',
+  contact varchar(255) default NULL,
+  lan varchar(255) default NULL,
+  ipv4 varchar(255) default NULL,
+  ipv6 varchar(255) default NULL,
+  speed varchar(255) default NULL,
+  switch varchar(255) default NULL,
+  location varchar(255) default NULL
+);

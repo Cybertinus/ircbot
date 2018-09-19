@@ -1,0 +1,126 @@
+#!/usr/bin/env python
+
+import sys, urllib, re, csv, sqlite3
+import cookielib, urllib2
+
+ix = "decix"
+login = "https://www.de-cix.net/dynaments/login.xml"
+url = "https://www.de-cix.net/members/content/latest-decix-opcon.csv"
+account = { "username": "user", "password": "hunter2" }
+
+query = """ INSERT INTO ix (name, asno, org, contact, 
+			    ipv4, ipv6, speed, switch, location)
+			VALUES (?,?,?,?,?,?,?,?,?) """
+
+locations = {
+    '1': 'Hanauer Landstrasse 302 (InterXion)',
+    '3': 'Hanauer Landstrasse 302 (InterXion)',
+    '11': 'Hanauer Landstrasse 302 (InterXion)',
+    '2': 'Weismuellerstrasse 19 (InterXion)',
+    '4': 'Weismuellerstrasse 19 (InterXion)',
+    '8': 'Weismuellerstrasse 19 (InterXion)',
+    '13': 'Weismuellerstrasse 19 (InterXion)',
+    '6': 'Gutleutstrasse 310 (TelecityGroup)',
+    '15': 'Gutleutstrasse 310 (TelecityGroup)',
+    '5': 'Kleyerstrasse 90 (Fibernet/GBLX)',
+    '7': 'Kleyerstrasse 90 (Fibernet/GBLX)',
+    '9': 'Kleyerstrasse 90 (Fibernet/GBLX)',
+}
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+
+    db = sqlite3.connect(datadir + "/ix.sqlite")
+    db.text_factory = lambda s:s.decode('utf-8')
+    con = db.cursor()
+
+    data = urllib.urlencode(account)
+    cj = cookielib.CookieJar()
+    session = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+
+    try:
+	response = session.open(login, data)
+    except IOError, e:
+	print "login failed: ", e.reason
+	sys.exit(1)
+
+    try:
+	response = session.open(url)
+    except:
+	print "failed to fetch %s" % url
+	sys.exit(1)
+
+    input = []
+    for x in response:
+	if x.startswith('# port'):
+	    x = x.lstrip('# ')
+	if x.startswith('#'):
+	    continue
+	if x.startswith('<') or not len(x.strip()):
+	    continue
+	input.append(x)
+
+    con.execute("DELETE FROM ix where name = ?", (ix,))
+    raw = csv.DictReader(input, delimiter=';') 
+
+    members = {}
+    for m in raw:
+
+	[ loc, ports ] = m["port"].split("/", 1)
+	if loc in locations:
+	    m["location"] = locations[loc]
+	elif not loc.isdigit():
+	    m["location"] = None
+	else:
+	    print "unknown location found: ", loc
+	    sys.exit(1)
+
+	m["loc"] = loc
+	m["ports"] = ports
+	m["ipv4"] = None
+	m["ipv6"] = None
+
+	if m["customer id"] not in members:
+	    members[m["customer id"]] = m
+
+	if m["peer IP"].find(":") == -1: 
+	    members[m["customer id"]]["ipv4"] = m["peer IP"]
+	else:
+	    members[m["customer id"]]["ipv6"] = m["peer IP"]
+
+
+    for m in members.itervalues():
+
+	for port in m["ports"].split(","):
+	    speed = None
+	    if port.find("Fa") != -1:
+		speed = "100Mbit"
+	    if port.find("Gi") != -1:
+		speed = "1000Mbit"
+	    if port.find("Te") != -1:
+		speed = "10000Mbit"
+
+	    port = "%s/%s" % (m["loc"], port)
+	    result = con.execute(query, (ix, m["ASN"], m["description"],
+			    m["peering mail"], m["ipv4"], m["ipv6"],
+			    speed, port, m["location"]))
+
+	    if not result:
+		sys.exit(1)
+
+    db.commit()
+    db.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

@@ -1,0 +1,28 @@
+CREATE TABLE routes (
+  id integer PRIMARY KEY,
+  asno int(11) NOT NULL,
+  type varchar(10) NOT NULL default 'ipv4',
+  net varchar(255) default NULL,
+  mask int(11) NOT NULL,
+  start int(10) NOT NULL,
+  end int(10) NOT NULL
+);
+CREATE INDEX ro_net_index ON routes(net);
+CREATE INDEX ro_start_index ON routes(start);
+CREATE INDEX ro_end_index ON routes(end);
+
+CREATE TABLE rirs (
+  id integer PRIMARY KEY,
+  rir varchar(10) NOT NULL,
+  type varchar(10) NOT NULL default 'ipv4',
+  cc varchar(5) NOT NULL,
+  net varchar(255) default NULL,
+  mask int(11) NOT NULL,
+  start int(10) NOT NULL,
+  end int(10) NOT NULL,
+  date date not NULL,
+  policy varchar(10) NOT NULL default 'allocated'
+);
+CREATE INDEX ri_net_index ON rirs(net);
+CREATE INDEX ri_start_index ON rirs(start);
+CREATE INDEX ri_end_index ON rirs(end);

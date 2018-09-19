@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+
+import sys, urllib, re, csv, sqlite3
+import IPy
+
+
+ix = "linx"
+url = "https://www.linx.net/membersasn.data"
+lans = { '195.66.224.0/22': 'LINX-PEER-LON1',
+	 '195.66.236.0/22': 'LINX-PEER-LON2',
+	 '195.66.244.0/24': 'LINX-PEER-MAN1',
+	 '195.66.230.0/26': 'LINX-MCAST-PEER-1' }
+
+query = """ INSERT INTO ix (name, asno, org, contact, lan, ipv4)
+			VALUES (?,?,?,?,?,?) """
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+
+    db = sqlite3.connect(datadir + "/ix.sqlite")
+    db.text_factory = lambda s:s.decode('utf-8')
+    con = db.cursor()
+
+    try:
+	response = urllib.urlopen(url)
+    except IOError, e:
+	if hasattr(e, 'reason'):
+	    print 'failed to fetch %s: ' % url, e.reason
+	elif hasattr(e, 'code'):
+	    print 'failed to fetch %s: ' % url, e.code
+	sys.exit(1)
+
+    if not response:
+	print "failed to fetch %s" % url
+	sys.exit(1)
+
+    response = [x for x in response if not x.startswith('#')]
+    con.execute("DELETE FROM ix where name = ?", (ix,))
+    members = csv.DictReader(response, dialect='excel', delimiter=':')
+
+    for m in members:
+	if "ASN" not in m:
+	    continue;
+
+	for key in m:
+	    if m[key] == '-':
+		m[key] = None
+
+	if len(m["IP Address"]) == 0:
+	    continue
+
+	for addr in m["IP Address"].split(","):
+
+	    lan = None
+	    for (range, name) in lans.iteritems():
+		if addr in IPy.IP(range):
+		    lan = name
+
+	    result = db.execute(query, (ix, m["ASN"], m["Company Name"],
+		    m["Peering email"], lan, addr))
+	    if not result:
+		sys.exit(1)
+
+    db.commit()
+    db.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+

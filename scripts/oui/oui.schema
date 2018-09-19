@@ -1,0 +1,7 @@
+BEGIN TRANSACTION;
+CREATE TABLE oui (
+  id integer PRIMARY KEY,
+  oui varchar(255) NOT NULL UNIQUE,
+  vendor varchar(255) NOT NULL default ''
+);
+COMMIT;

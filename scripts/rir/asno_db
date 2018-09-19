@@ -1,0 +1,141 @@
+#!/usr/bin/env python
+
+import os, sys, urllib, re, gzip, StringIO, sqlite3
+
+rirdbs = {
+    "arin" : "ftp://ftp.arin.net/info/asn.txt",
+    "ripencc" : "ftp://ftp.ripe.net/ripe/dbase/split/ripe.db.aut-num.gz",
+    }
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+
+    try:
+	datadir = sys.argv[1]
+    except:
+	print "usage: %s datadir" % sys.argv[0]
+	sys.exit(1)
+
+
+    db = sqlite3.connect(datadir + "/asno.sqlite")
+    db.text_factory = lambda s:s.decode('utf-8')
+    con = db.cursor()
+
+    for (rir, url) in rirdbs.iteritems():
+	filename = '%s/rir/db/%s.txt' % (datadir, rir)
+
+	try:
+	    response = urllib.urlopen(url).read()
+	except:
+	    print "failed to fetch %s for %s" % (url, rir)
+	    continue;
+
+	try:
+	    sresponse = StringIO.StringIO(response)
+	    gzipper = gzip.GzipFile(fileobj=sresponse)
+	    response = gzipper.read() 
+	except:
+	    pass
+
+	try:
+	    f = open('%s.%s' % (filename, os.getpid()), 'w')
+	    f.write(response)
+	    f.close
+	except:
+	    print "failed to write %s" % (filename)
+	    sys.exit(1)
+
+	os.rename("%s.%s" % (filename, os.getpid()), filename)
+
+ 
+	if rir == "arin":
+	    parse_arin(con, rir, response)
+	else:
+	    parse_rpsl(con, rir, response)
+
+
+    db.commit()
+    db.close()
+
+
+def parse_arin(con, rir, txt):
+    query = "UPDATE asno SET description=? WHERE asno=? AND rir=?"
+    regexp = "^\s*([\d\-]+)\s+(\S+)\s"
+    pattern = re.compile(regexp, re.M)
+
+    for line in txt.split("\n"):
+
+	# IANA
+	if line.find("IANA-RSVD") != -1:
+	    continue
+
+	# AFRINIC
+	if line.find("AFRINIC-ASNBLOCK") != -1:
+	    continue
+
+	# APNIC
+	if line.find("APNIC-") != -1:
+	    continue
+
+	# RIPE
+	if line.find("RIPE-ASNBLOCK") != -1:
+	    continue
+	if line.find("ASNBLK-RIPE") != -1:
+	    continue
+	if line.find("RIPE-ASBLOCK-") != -1:
+	    continue
+	if line.find("ASN-BLKRIPE") != -1:
+	    continue
+
+	for m in pattern.finditer(line):
+	    asrange = m.group(1)
+	    description = m.group(2)
+
+	    try:
+		[ asmin, asmax ] = asrange.split('-')
+	    except:
+		asmin = asmax = asrange
+
+	    asmin = int(asmin)
+	    asmax = int(asmax) + 1
+
+	    for asno in range(asmin, asmax):
+		con.execute(query, (description, asno, rir.upper()))
+
+
+def parse_rpsl(con, rir, txt):
+    query = "UPDATE asno SET asname=?, description=? WHERE asno=?"
+    regexp = "(aut-num|as-name|descr):\s+(AS(\d+)|\S+.*)"
+    pattern = re.compile(regexp, re.IGNORECASE)
+    anum = re.compile("\w")
+    rec = {}
+
+    for line in txt.split("\n"):
+	if len(line) == 0:
+	    if 'aut-num' in rec:
+		rec['aut-num'] = int(rec['aut-num'])
+
+		if rec['as-name'] == "UNSPECIFIED":
+		    rec['as-name'] = None
+		if not 'descr' in rec:
+		    rec['descr'] = None
+
+		con.execute(query, (rec['as-name'], rec['descr'],
+				    rec['aut-num']))
+	    rec = {}
+
+	m = pattern.match(line)
+	if m and m.group(1) not in rec:
+	    if m.group(1) == 'aut-num':
+		rec[m.group(1)] = m.group(3)
+	    else:
+		if (anum.match(m.group(2))):
+		    rec[m.group(1)] = m.group(2)
+
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
