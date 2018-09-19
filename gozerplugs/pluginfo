@@ -1,0 +1,32 @@
+#! /usr/bin/env python
+
+import hashlib, os, stat, glob, time
+
+# what files are we going to export?
+exports = ['*.py', '*.tar']
+
+def gen_versions(files):
+    fh = open('versions', 'w')
+    fh.write('# versions - generated at %s\n' % time.strftime('%a, %d %b %Y %H:%M:%S'))
+    for file in files:
+        info = os.stat(file)
+        fh.write('%d %d %s\n' % (info[stat.ST_MTIME], info[stat.ST_SIZE], file))
+    fh.close()
+
+def gen_signatures(files):
+    fh = open('signatures', 'w')
+    fh.write('# signatures - generated at %s\n' % time.strftime('%a, %d %b %Y %H:%M:%S'))
+    for file in files:
+        sum = hashlib.md5(open(file).read()).hexdigest()
+        fh.write('MD5 (%s) = %s\n' % (file, sum))
+    fh.close()
+
+if __name__ == '__main__':
+    # index files
+    files = []
+    for export in exports:
+        files += [os.path.basename(x) for x in glob.glob(export)]
+    files.sort()
+    # export them
+    gen_versions(files)
+    gen_signatures(files)
